@@ -281,5 +281,4 @@ if st.button("Generate"):
     sample_grid = make_grid(samples, nrow=int(np.sqrt(64)))
     plt.figure(figsize=(6, 6))
     plt.axis("off")
-    im = plt.imshow(sample_grid.permute(2, 1, 0).cpu(), vmin=0.0, vmax=1.0)
-    st.image(im, caption="Generated images", use_column_width=True)
+    st.image(sample_grid.permute(2, 1, 0).numpy(), caption="Generated images", use_column_width=True)

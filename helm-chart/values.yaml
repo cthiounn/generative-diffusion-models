@@ -1,0 +1,14 @@
+shiny:
+  image:
+    repository: cthiounn/ensae-diffusion-model-3a-deeplearning
+    tag: "latest"
+  ingress:
+    enabled: true
+    hostname: ensae-diffusion-model-3a-deeplearning.lab.sspcloud.fr
+#  resources:
+#    requests:
+#      nvidia.com/gpu: 1
+#    limits:
+#      nvidia.com/gpu: 1
+  probe:
+    enabled: false
