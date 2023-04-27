@@ -1,0 +1,5 @@
+streamlit
+torch
+torchvision
+pillow==9.3.0
+numpy
