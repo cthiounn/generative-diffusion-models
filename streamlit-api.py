@@ -8,13 +8,14 @@ from torchvision.utils import make_grid
 
 st.text("Version : 1.0 ")
 
-device = "cpu"
+
+
 
 
 sigma = 21500
 
 
-def marginal_prob_std(t, sigma):
+def marginal_prob_std(t, sigma, device):
     """Compute the mean and standard deviation of $p_{0t}(x(t) | x(0))$.
 
     Args:
@@ -28,7 +29,7 @@ def marginal_prob_std(t, sigma):
     return torch.sqrt((sigma ** (2 * t) - 1.0) / 2.0 / np.log(sigma))
 
 
-def diffusion_coeff(t, sigma):
+def diffusion_coeff(t, sigma, device):
     """Compute the diffusion coefficient of our SDE.
 
     Args:
@@ -39,33 +40,6 @@ def diffusion_coeff(t, sigma):
         The vector of diffusion coefficients.
     """
     return torch.tensor(sigma**t, device=device)
-
-
-marginal_prob_std_fn = functools.partial(marginal_prob_std, sigma=sigma)
-diffusion_coeff_fn = functools.partial(diffusion_coeff, sigma=sigma)
-
-
-# From Yang Song notebook
-def loss_fn(model, x, marginal_prob_std, eps=1e-5):
-    """The loss function for training score-based generative models.
-
-    Args:
-        model: A PyTorch model instance that represents a
-        time-dependent score-based model.
-        x: A mini-batch of training data.
-        marginal_prob_std: A function that gives the standard deviation of
-        the perturbation kernel.
-        eps: A tolerance value for numerical stability.
-    """
-    random_t = torch.rand(x.shape[0], device=x.device) * (1.0 - eps) + eps
-    z = torch.randn_like(x)
-    std = marginal_prob_std(random_t)
-    perturbed_x = x + z * std[:, None, None, None]
-    score = model(perturbed_x, random_t)
-    loss = torch.mean(
-        torch.sum((score * std[:, None, None, None] + z) ** 2, dim=(1, 2, 3))
-    )
-    return loss
 
 
 class GaussianFourierProjection(nn.Module):
@@ -207,9 +181,9 @@ def Euler_Maruyama_sampler(
     score_model,
     marginal_prob_std,
     diffusion_coeff,
+    device,
     batch_size=8,
     num_steps=500,
-    device="cuda",
     eps=1e-5,
 ):
     """Generate samples from score-based models with the Euler-Maruyama solver.
@@ -253,32 +227,64 @@ def Euler_Maruyama_sampler(
     return mean_x
 
 
-# From Yang Song notebook
-
-score_model = torch.nn.DataParallel(ScoreNet(marginal_prob_std=marginal_prob_std_fn))
-score_model = score_model.to(device)
-
-score_model.load_state_dict(torch.load("ckpt.pth", map_location=device))
-
-sampler = Euler_Maruyama_sampler
-
-
 st.header("Generate EMNIST letter image")
+
+td = "GPU"
+
+#td = st.radio(
+#    "Training device",
+#    ('CPU', 'GPU' ))
+
+if td == 'CPU':
+    device = "cpu"
+    marginal_prob_std_fncpu = functools.partial(marginal_prob_std, sigma=sigma, device=device)
+    diffusion_coeff_fncpu = functools.partial(diffusion_coeff, sigma=sigma, device=device)
+    score_modelcpu = torch.nn.DataParallel(ScoreNet(marginal_prob_std=marginal_prob_std_fncpu))
+    score_modelcpu = score_modelcpu.to(device)
+    score_modelcpu.load_state_dict(torch.load("ckpt.pth", map_location=device))
+    samplercpu = Euler_Maruyama_sampler
+
+else:
+    device = "cuda"
+    marginal_prob_std_fngpu = functools.partial(marginal_prob_std, sigma=sigma, device=device)
+    diffusion_coeff_fngpu = functools.partial(diffusion_coeff, sigma=sigma, device=device)
+    score_modelgpu = torch.nn.DataParallel(ScoreNet(marginal_prob_std=marginal_prob_std_fngpu))
+    score_modelgpu = score_modelgpu.to(device)
+    score_modelgpu.load_state_dict(torch.load("ckpt.pth", map_location=device))
+    samplergpu = Euler_Maruyama_sampler
+
+    
+
+
+
+
 
 
 if st.button("Generate"):
     # Generate samples using the specified sampler.
-    samples = sampler(
-        score_model,
-        marginal_prob_std_fn,
-        diffusion_coeff_fn,
-        64,
-        device=device,
-    )
-
+    if device == "cuda":
+        samples = samplergpu(
+            score_modelgpu,
+            marginal_prob_std_fngpu,
+            diffusion_coeff_fngpu,
+            device,
+            64,
+        )
+    else:
+        samples = samplercpu(
+            score_modelcpu,
+            marginal_prob_std_fncpu,
+            diffusion_coeff_fncpu,
+            device,
+            64,
+        )
     # Sample visualization.
     samples = samples.clamp(0.0, 1.0)
     sample_grid = make_grid(samples, nrow=int(np.sqrt(64)))
     plt.figure(figsize=(6, 6))
     plt.axis("off")
-    st.image(sample_grid.permute(2, 1, 0).numpy(), caption="Generated images", use_column_width=True)
+    tensor=sample_grid.permute(2, 1, 0)
+    if device == "cuda":
+        tensor=tensor.cpu()
+    tensor=tensor.numpy()
+    st.image(tensor, caption="Generated images", use_column_width=True)
