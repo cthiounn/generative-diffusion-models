@@ -8,13 +8,6 @@ from torchvision.utils import make_grid
 
 st.text("Version : 1.0 ")
 
-
-
-
-
-sigma = 21500
-
-
 def marginal_prob_std(t, sigma, device):
     """Compute the mean and standard deviation of $p_{0t}(x(t) | x(0))$.
 
@@ -182,7 +175,7 @@ def Euler_Maruyama_sampler(
     marginal_prob_std,
     diffusion_coeff,
     device,
-    batch_size=8,
+    batch_size=64,
     num_steps=500,
     eps=1e-5,
 ):
@@ -227,7 +220,7 @@ def Euler_Maruyama_sampler(
     return mean_x
 
 
-st.header("Generate EMNIST letter image")
+st.header("Generate images")
 
 td = "GPU"
 
@@ -235,49 +228,84 @@ td = "GPU"
 #    "Training device",
 #    ('CPU', 'GPU' ))
 
-if td == 'CPU':
-    device = "cpu"
-    marginal_prob_std_fncpu = functools.partial(marginal_prob_std, sigma=sigma, device=device)
-    diffusion_coeff_fncpu = functools.partial(diffusion_coeff, sigma=sigma, device=device)
-    score_modelcpu = torch.nn.DataParallel(ScoreNet(marginal_prob_std=marginal_prob_std_fncpu))
-    score_modelcpu = score_modelcpu.to(device)
-    score_modelcpu.load_state_dict(torch.load("ckpt.pth", map_location=device))
-    samplercpu = Euler_Maruyama_sampler
+sigma_emnist = 21500
+sigma_kmnist = 20200
+sigma_hasy =  17000
+#if td == 'CPU':
+#    device = "cpu"
+#    marginal_prob_std_fncpu = functools.partial(marginal_prob_std, sigma=sigma_emnist, device=device)
+#    diffusion_coeff_fncpu = functools.partial(diffusion_coeff, sigma=sigma_emnist, device=device)
+#    score_modelcpu = torch.nn.DataParallel(ScoreNet(marginal_prob_std=marginal_prob_std_fncpu))
+#    score_modelcpu = score_modelcpu.to(device)
+#    score_modelcpu.load_state_dict(torch.load("ckpt.pth", map_location=device))
+#    samplercpu = Euler_Maruyama_sampler
 
-else:
-    device = "cuda"
-    marginal_prob_std_fngpu = functools.partial(marginal_prob_std, sigma=sigma, device=device)
-    diffusion_coeff_fngpu = functools.partial(diffusion_coeff, sigma=sigma, device=device)
-    score_modelgpu = torch.nn.DataParallel(ScoreNet(marginal_prob_std=marginal_prob_std_fngpu))
-    score_modelgpu = score_modelgpu.to(device)
-    score_modelgpu.load_state_dict(torch.load("ckpt.pth", map_location=device))
-    samplergpu = Euler_Maruyama_sampler
+#else:
+device = "cuda"
+emnist_marginal_prob_std_fngpu = functools.partial(marginal_prob_std, sigma=sigma_emnist, device=device)
+emnist_diffusion_coeff_fngpu = functools.partial(diffusion_coeff, sigma=sigma_emnist, device=device)
+emnist_score_modelgpu = torch.nn.DataParallel(ScoreNet(marginal_prob_std=emnist_marginal_prob_std_fngpu))
+emnist_score_modelgpu = emnist_score_modelgpu.to(device)
+emnist_score_modelgpu.load_state_dict(torch.load("ckpt.pth", map_location=device))
+emnist_samplergpu = functools.partial(Euler_Maruyama_sampler,
+    score_model=emnist_score_modelgpu,
+    marginal_prob_std=emnist_marginal_prob_std_fngpu,
+    diffusion_coeff=emnist_diffusion_coeff_fngpu,
+    device=device
+)
 
+
+kmnist_marginal_prob_std_fngpu = functools.partial(marginal_prob_std, sigma=sigma_kmnist, device=device)
+kmnist_diffusion_coeff_fngpu = functools.partial(diffusion_coeff, sigma=sigma_kmnist, device=device)
+kmnist_score_modelgpu = torch.nn.DataParallel(ScoreNet(marginal_prob_std=kmnist_marginal_prob_std_fngpu))
+kmnist_score_modelgpu = kmnist_score_modelgpu.to(device)
+kmnist_score_modelgpu.load_state_dict(torch.load("kmnist_ckpt_20200_110_142.pth", map_location=device))
+kmnist_samplergpu = functools.partial(Euler_Maruyama_sampler,
+    score_model=kmnist_score_modelgpu,
+    marginal_prob_std=kmnist_marginal_prob_std_fngpu,
+    diffusion_coeff=kmnist_diffusion_coeff_fngpu,
+    device=device
+)    
+
+
+hasy_marginal_prob_std_fngpu = functools.partial(marginal_prob_std, sigma=sigma_hasy, device=device)
+hasy_diffusion_coeff_fngpu = functools.partial(diffusion_coeff, sigma=sigma_hasy, device=device)
+hasy_score_modelgpu = torch.nn.DataParallel(ScoreNet(marginal_prob_std=hasy_marginal_prob_std_fngpu))
+hasy_score_modelgpu = hasy_score_modelgpu.to(device)
+hasy_score_modelgpu.load_state_dict(torch.load("hasy_ckpt_17000_4_17.pth", map_location=device))
+hasy_samplergpu = functools.partial(Euler_Maruyama_sampler,
+    score_model=hasy_score_modelgpu,
+    marginal_prob_std=hasy_marginal_prob_std_fngpu,
+    diffusion_coeff=hasy_diffusion_coeff_fngpu,
+    device=device
+)
+
+
+option = st.selectbox(
+    'From dataset',
+    ('EMNIST', 'kMNIST', 'HASYv2'))
+if option=='EMNIST':
+    sampler=emnist_samplergpu
+elif option=='kMNIST':
+    sampler=kmnist_samplergpu
+elif option=='HASYv2':
+    sampler=hasy_samplergpu
     
-
-
-
-
+    
 
 
 if st.button("Generate"):
     # Generate samples using the specified sampler.
-    if device == "cuda":
-        samples = samplergpu(
-            score_modelgpu,
-            marginal_prob_std_fngpu,
-            diffusion_coeff_fngpu,
-            device,
-            64,
-        )
-    else:
-        samples = samplercpu(
-            score_modelcpu,
-            marginal_prob_std_fncpu,
-            diffusion_coeff_fncpu,
-            device,
-            64,
-        )
+    # if device == "cuda":
+    samples = sampler()
+    # else:
+    #     samples = samplercpu(
+    #         score_modelcpu,
+    #         marginal_prob_std_fncpu,
+    #         diffusion_coeff_fncpu,
+    #         device,
+    #         64,
+    #     )
     # Sample visualization.
     samples = samples.clamp(0.0, 1.0)
     sample_grid = make_grid(samples, nrow=int(np.sqrt(64)))
